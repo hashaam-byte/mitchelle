@@ -15,10 +15,10 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    // Remove custom interfaces and use the types returned by Prisma directly
+    type CartItemWithProduct = typeof cartItems[number];
 
     const total: number = cartItems.reduce(
-      (sum: number, item) => sum + item.product.price * item.quantity,
+      (sum: number, item: CartItemWithProduct) => sum + item.product.price * item.quantity,
       0
     );
 
