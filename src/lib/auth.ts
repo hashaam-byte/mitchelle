@@ -1,12 +1,11 @@
 // lib/auth.ts
-import { NextAuthOptions } from 'next-auth';
+import { NextAuthOptions, getServerSession as nextAuthGetServerSession } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import FacebookProvider from 'next-auth/providers/facebook';
 import { PrismaAdapter } from '@next-auth/prisma-adapter';
 import bcrypt from 'bcryptjs';
 import prisma from './prisma';
-import { getServerSession as nextAuthGetServerSession } from 'next-auth';
 import { UserRole } from '@prisma/client';
 
 export { UserRole };
