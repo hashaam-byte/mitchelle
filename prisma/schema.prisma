@@ -1,0 +1,272 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===== USER ROLES =====
+enum UserRole {
+  CLIENT
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PREPARING
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// ===== USERS TABLE =====
+model User {
+  id            String    @id @default(uuid())
+  fullName      String
+  email         String    @unique
+  phone         String?
+  password      String
+  role          UserRole  @default(CLIENT)
+  isRegular     Boolean   @default(false)
+  totalSpent    Float     @default(0)
+  lastLogin     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  cartItems     CartItem[]
+  orders        Order[]
+  payments      Payment[]
+  addresses     Address[]
+  discounts     UserDiscount[]
+  adImpressions AdImpression[]
+
+  @@index([email])
+  @@index([role])
+}
+
+// ===== PRODUCTS =====
+model Product {
+  id          String    @id @default(uuid())
+  title       String
+  slug        String    @unique
+  description String?
+  price       Float
+  imageUrl    String    // Cloudinary URL
+  category    String
+  stock       Int       @default(0)
+  isFeatured  Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
+
+  @@index([slug])
+  @@index([category])
+  @@index([isFeatured])
+}
+
+// ===== CART =====
+model CartItem {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+}
+
+// ===== ORDERS =====
+model Order {
+  id             String      @id @default(uuid())
+  userId         String
+  subtotal       Float
+  discount       Float       @default(0)
+  platformFee    Float       // Your 5%
+  adminRevenue   Float       // 95% to admin
+  shipping       Float       @default(0)
+  total          Float
+  status         OrderStatus @default(PENDING)
+  deliveryAddress String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  user     User        @relation(fields: [userId], references: [id])
+  items    OrderItem[]
+  payment  Payment?
+
+  @@index([userId])
+  @@index([status])
+}
+
+model OrderItem {
+  id              String   @id @default(uuid())
+  orderId         String
+  productId       String
+  quantity        Int
+  priceSnapshot   Float    // Price at time of order
+  createdAt       DateTime @default(now())
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+}
+
+// ===== PAYMENTS =====
+model Payment {
+  id                  String        @id @default(uuid())
+  orderId             String        @unique
+  userId              String
+  provider            String        @default("paystack") // paystack, stripe, etc
+  transactionRef      String        @unique
+  amount              Float
+  feeCollected        Float         // Platform's 5%
+  adminEarning        Float         // Admin's 95%
+  status              PaymentStatus @default(PENDING)
+  paymentMetadata     Json?         // Store provider response
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@index([transactionRef])
+  @@index([status])
+}
+
+// ===== DISCOUNTS & COUPONS =====
+model Discount {
+  id            String   @id @default(uuid())
+  code          String   @unique
+  type          String   // PERCENTAGE, FIXED
+  value         Float
+  appliesTo     String   @default("ALL") // ALL, CATEGORY, PRODUCT
+  minPurchase   Float    @default(0)
+  maxUses       Int?
+  usageCount    Int      @default(0)
+  validFrom     DateTime
+  validTo       DateTime
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  userDiscounts UserDiscount[]
+
+  @@index([code])
+}
+
+model UserDiscount {
+  id         String   @id @default(uuid())
+  userId     String
+  discountId String
+  usedAt     DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id])
+  discount Discount @relation(fields: [discountId], references: [id])
+
+  @@unique([userId, discountId])
+}
+
+// ===== ADDRESS =====
+model Address {
+  id        String   @id @default(uuid())
+  userId    String
+  fullName  String
+  phone     String
+  address   String
+  city      String
+  state     String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ===== ADS SYSTEM =====
+model Ad {
+  id              String   @id @default(uuid())
+  title           String
+  imageUrl        String   // Cloudinary
+  link            String?
+  type            String   @default("BANNER") // BANNER, SIDEBAR, POPUP
+  position        String   @default("BOTTOM_RIGHT")
+  startDate       DateTime
+  endDate         DateTime
+  isActive        Boolean  @default(true)
+  impressions     Int      @default(0)
+  revenuePerView  Float    @default(0.10) // ₦0.10 per view
+  totalRevenue    Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  adImpressions AdImpression[]
+
+  @@index([isActive])
+  @@index([startDate, endDate])
+}
+
+model AdImpression {
+  id        String   @id @default(uuid())
+  adId      String
+  userId    String?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  ad   Ad    @relation(fields: [adId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([adId])
+  @@index([createdAt])
+}
+
+// ===== OWNER/PLATFORM STATS =====
+model PlatformStats {
+  id                  String   @id @default(uuid())
+  date                DateTime @unique @default(now())
+  totalCommission     Float    @default(0)
+  totalAdRevenue      Float    @default(0)
+  totalSales          Float    @default(0)
+  dailyActiveUsers    Int      @default(0)
+  newUsers            Int      @default(0)
+  ordersPlaced        Int      @default(0)
+  adImpressions       Int      @default(0)
+  createdAt           DateTime @default(now())
+
+  @@index([date])
+}
+
+// ===== ANALYTICS =====
+model Analytics {
+  id        String   @id @default(uuid())
+  event     String   // LOGIN, PRODUCT_VIEW, ADD_TO_CART, CHECKOUT, etc
+  userId    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([event])
+  @@index([createdAt])
+}
