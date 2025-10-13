@@ -47,16 +47,11 @@ export async function POST(req: NextRequest) {
       include: { product: true },
     });
 
-    if (cartItems.length === 0) {
-      return NextResponse.json(
-        { error: 'Cart is empty' },
-        { status: 400 }
-      );
-    }
+    type CartItemWithProduct = typeof cartItems[number];
 
     // Calculate subtotal
     const subtotal = cartItems.reduce(
-      (sum: number, item) => sum + item.product.price * item.quantity,
+      (sum: number, item: CartItemWithProduct) => sum + item.product.price * item.quantity,
       0
     );
 
