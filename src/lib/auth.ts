@@ -1,4 +1,4 @@
-// lib/auth.ts
+// lib/auth.ts - FIXED VERSION
 import { NextAuthOptions, getServerSession as nextAuthGetServerSession } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
@@ -30,17 +30,12 @@ export const authOptions: NextAuthOptions = {
         superAdminKey: { label: 'Super Admin Key', type: 'password' },
       },
       async authorize(credentials) {
-        console.log('Incoming credentials:', credentials);
-
         if (!credentials?.email || !credentials?.password) {
-          console.log('❌ Missing credentials');
           throw new Error('Invalid credentials');
         }
 
         // Super Admin Login
         if (credentials.isSuperAdmin === 'true') {
-          console.log('🟣 Super admin login attempt');
-
           if (
             credentials.email === process.env.SUPER_ADMIN_EMAIL &&
             credentials.superAdminKey === process.env.SUPER_ADMIN_SECRET_KEY &&
@@ -51,7 +46,6 @@ export const authOptions: NextAuthOptions = {
             });
 
             if (!superAdmin) {
-              console.log('🆕 Creating new super admin...');
               superAdmin = await prisma.user.create({
                 data: {
                   email: process.env.SUPER_ADMIN_EMAIL!,
@@ -62,7 +56,6 @@ export const authOptions: NextAuthOptions = {
               });
             }
 
-            console.log('✅ Super admin authenticated');
             return {
               id: superAdmin.id,
               email: superAdmin.email,
@@ -71,32 +64,24 @@ export const authOptions: NextAuthOptions = {
             };
           }
 
-          console.log('❌ Invalid super admin credentials');
           throw new Error('Invalid super admin credentials');
         }
 
         // Regular User Login
-        console.log('🟢 Regular user login attempt for email:', credentials.email);
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
         });
 
         if (!user) {
-          console.log('❌ No user found for email:', credentials.email);
           throw new Error('No user found with this email');
         }
-
-        console.log('🔍 User found:', { id: user.id, email: user.email, role: user.role });
 
         const isPasswordValid = await bcrypt.compare(
           credentials.password,
           user.password
         );
 
-        console.log('🔑 Password validation result for email:', credentials.email, isPasswordValid);
-
         if (!isPasswordValid) {
-          console.log('❌ Invalid password for email:', credentials.email);
           throw new Error('Invalid password');
         }
 
@@ -106,7 +91,6 @@ export const authOptions: NextAuthOptions = {
           data: { lastLogin: new Date() },
         });
 
-        console.log('✅ User authorized:', { id: user.id, email: user.email, role: user.role });
         return {
           id: user.id,
           email: user.email,
@@ -127,23 +111,15 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        console.log('🔑 Setting JWT token for user:', user);
         token.id = user.id;
         token.role = user.role;
-      } else {
-        console.log('🔑 JWT token already set:', token);
       }
       return token;
     },
     async session({ session, token }) {
-      if (token) {
-        console.log('🔄 Populating session with token data:', token);
-        session.user = {
-          id: token.id as string,
-          role: token.role as UserRole,
-        };
-      } else {
-        console.log('❌ No token found for session:', session);
+      if (token && session.user) {
+        session.user.id = token.id as string;
+        session.user.role = token.role as UserRole;
       }
       return session;
     },
@@ -151,13 +127,9 @@ export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 };
 
-// Helper functions
-export async function getServerSession() {
-  return nextAuthGetServerSession(authOptions);
-}
-
+// FIXED Helper functions - Use getServerSession from next-auth directly
 export async function getCurrentUser() {
-  const session = await getServerSession();
+  const session = await nextAuthGetServerSession(authOptions);
   return session?.user;
 }
 

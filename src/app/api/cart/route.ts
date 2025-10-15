@@ -140,12 +140,12 @@ export async function DELETE(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const cartItemId = searchParams.get('id');
 
-    if (!cartItemId) {
-      return NextResponse.json(
-        { error: 'Cart item ID required' },
-        { status: 400 }
-      );
-    }
+if (!cartItemId) {
+  return NextResponse.json(
+    { error: 'Cart item ID required' },
+    { status: 400 }
+  );
+}
 
     // Verify ownership
     const cartItem = await prisma.cartItem.findUnique({
@@ -173,6 +173,63 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json(
       { error: 'Failed to remove from cart', details: error.message },
+      { status: 500 }
+    );
+  }
+}
+// PATCH: Update cart item quantity
+export async function PATCH(req: NextRequest) {
+  try {
+    const user = await requireAuth();
+    const body = await req.json();
+    const { cartItemId, quantity } = body;
+
+    if (!cartItemId || !quantity || quantity < 1) {
+      return NextResponse.json(
+        { error: 'Invalid cart item ID or quantity' },
+        { status: 400 }
+      );
+    }
+
+    // Verify cart item belongs to user
+    const existingCartItem = await prisma.cartItem.findUnique({
+      where: { id: cartItemId },
+      include: { product: true },
+    });
+
+    if (!existingCartItem || existingCartItem.userId !== user.id) {
+      return NextResponse.json(
+        { error: 'Cart item not found' },
+        { status: 404 }
+      );
+    }
+
+    // Check stock availability
+    if (existingCartItem.product.stock < quantity) {
+      return NextResponse.json(
+        { error: 'Insufficient stock' },
+        { status: 400 }
+      );
+    }
+
+    // Update quantity
+    const updatedCartItem = await prisma.cartItem.update({
+      where: { id: cartItemId },
+      data: { quantity },
+      include: { product: true },
+    });
+
+    return NextResponse.json({
+      message: 'Cart updated successfully',
+      cartItem: updatedCartItem,
+    });
+  } catch (error: any) {
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    return NextResponse.json(
+      { error: 'Failed to update cart', details: error.message },
       { status: 500 }
     );
   }

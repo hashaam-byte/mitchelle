@@ -22,6 +22,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "src/app/auth/login/page.jsx", "src/app/auth/register/page.jsx", "src/app/page.jsx", "src/app/client/checkout/page.jsx", "src/app/client/cart/page.jsx", "src/app/client/product/[id]/page.jsx", "src/app/client/products/page.jsx", "src/app/client/orders/page.jsx", "src/app/client/home/page.jsx", "src/app/admin/users/page.jsx", "src/app/admin/products/page.jsx", "src/app/admin/dashboard/page.jsx", "src/app/admin/payments/page.jsx", "src/app/client/layout.jsx", "src/app/admin/owner/page.jsx"],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "src/app/auth/login/page.jsx", "src/app/auth/register/page.jsx", "src/app/page.jsx", "src/app/(client)/client/checkout/page.jsx", "src/app/(client)/client/cart/page.jsx", "src/app/(client)/client/product/[id]/page.jsx", "src/app/(client)/client/products/page.jsx", "src/app/(client)/client/orders/page.jsx", "src/app/(client)/client/home/page.jsx", "src/app/(admin)/admin/users/page.jsx", "src/app/(admin)/admin/products/page.jsx", "src/app/(admin)/admin/dashboard/page.jsx", "src/app/(adsrc/app/(client)/client/layout.jsxjsx", "src/app/client/layout.jsx", "src/app/(admin)/admin/owner/page.jsx"],
   "exclude": ["node_modules"]
 }
