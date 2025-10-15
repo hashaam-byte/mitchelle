@@ -14,7 +14,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Check if the route is protected
-  const isProtectedRoute = Object.keys(protectedRoutes).some(route => 
+  const isProtectedRoute = Object.keys(protectedRoutes).some((route) =>
     pathname.startsWith(route)
   );
 
@@ -22,7 +22,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Get the token
+  // Get JWT from NextAuth
   const token = await getToken({
     req: request,
     secret: process.env.NEXTAUTH_SECRET,
@@ -30,8 +30,8 @@ export async function middleware(request: NextRequest) {
 
   // If no token, redirect to login
   if (!token) {
-    const loginUrl = new URL('/auth/login', request.url);
-    loginUrl.searchParams.set('callbackUrl', pathname);
+    const loginUrl = new URL('https://mscakehub.vercel.app/auth/login'); // ✅ Fixed callback domain
+    loginUrl.searchParams.set('callbackUrl', `https://mscakehub.vercel.app${pathname}`);
     return NextResponse.redirect(loginUrl);
   }
 
@@ -39,15 +39,21 @@ export async function middleware(request: NextRequest) {
   for (const [route, allowedRoles] of Object.entries(protectedRoutes)) {
     if (pathname.startsWith(route)) {
       const userRole = token.role as string;
-      
+
       if (!allowedRoles.includes(userRole)) {
-        // Redirect based on user role
+        // Redirect based on role
         if (userRole === 'CLIENT') {
-          return NextResponse.redirect(new URL('/client/home', request.url));
+          return NextResponse.redirect(
+            new URL('https://mscakehub.vercel.app/client/home')
+          );
         } else if (userRole === 'ADMIN') {
-          return NextResponse.redirect(new URL('/admin/dashboard', request.url));
+          return NextResponse.redirect(
+            new URL('https://mscakehub.vercel.app/admin/dashboard')
+          );
         } else {
-          return NextResponse.redirect(new URL('/auth/login', request.url));
+          return NextResponse.redirect(
+            new URL('https://mscakehub.vercel.app/auth/login')
+          );
         }
       }
       break;
