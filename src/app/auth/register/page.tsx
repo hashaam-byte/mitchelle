@@ -1,13 +1,18 @@
-// app/(auth)/auth/register/page.tsx - FIXED: No callback URLs
+// app/(auth)/auth/register/page.tsx - WITH ROLE SELECTION
 'use client'
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
-import { Eye, EyeOff, Mail, Lock, User, Phone, ArrowRight, Sparkles, AlertCircle, CheckCircle } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User, Phone, ArrowRight, Sparkles, AlertCircle, CheckCircle, Shield, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+
+type UserRole = 'CLIENT' | 'ADMIN';
 
 export default function RegisterPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<UserRole>('CLIENT');
+  const [adminExists, setAdminExists] = useState(false);
+  const [checkingAdmin, setCheckingAdmin] = useState(true);
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -18,6 +23,23 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+
+  // Check if admin account exists on mount
+  useEffect(() => {
+    checkAdminExists();
+  }, []);
+
+  const checkAdminExists = async () => {
+    try {
+      const response = await fetch('/api/auth/check-admin');
+      const data = await response.json();
+      setAdminExists(data.exists);
+      setCheckingAdmin(false);
+    } catch (error) {
+      console.error('Error checking admin:', error);
+      setCheckingAdmin(false);
+    }
+  };
 
   const handleChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -39,6 +61,10 @@ export default function RegisterPage() {
     }
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
+      return false;
+    }
+    if (selectedRole === 'ADMIN' && adminExists) {
+      setError('Admin account already exists. Only one admin allowed.');
       return false;
     }
     return true;
@@ -64,7 +90,7 @@ export default function RegisterPage() {
           email: formData.email,
           phone: formData.phone || undefined,
           password: formData.password,
-          role: 'CLIENT'
+          role: selectedRole
         }),
       });
 
@@ -89,7 +115,8 @@ export default function RegisterPage() {
 
         if (loginResult?.ok) {
           // Force hard refresh to trigger middleware
-          window.location.href = '/client/home';
+          // Middleware will redirect to correct dashboard based on role
+          window.location.href = selectedRole === 'ADMIN' ? '/admin/dashboard' : '/client/home';
         } else {
           // If auto-login fails, redirect to login page
           router.push('/auth/login');
@@ -150,6 +177,76 @@ export default function RegisterPage() {
           )}
 
           <form onSubmit={handleRegister} className="space-y-4">
+            {/* Role Selection */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-gray-700">Select Account Type</label>
+              {checkingAdmin ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="w-6 h-6 border-2 border-pink-300 border-t-pink-600 rounded-full animate-spin"></div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Client Role */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRole('CLIENT')}
+                    className={`p-4 rounded-xl border-2 transition-all ${
+                      selectedRole === 'CLIENT'
+                        ? 'border-pink-500 bg-pink-50'
+                        : 'border-gray-200 bg-white/50 hover:border-pink-300'
+                    }`}
+                  >
+                    <Users className={`w-8 h-8 mx-auto mb-2 ${
+                      selectedRole === 'CLIENT' ? 'text-pink-600' : 'text-gray-400'
+                    }`} />
+                    <p className={`font-medium text-sm ${
+                      selectedRole === 'CLIENT' ? 'text-pink-700' : 'text-gray-600'
+                    }`}>
+                      Client
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Browse & order cakes</p>
+                  </button>
+
+                  {/* Admin Role */}
+                  <button
+                    type="button"
+                    onClick={() => !adminExists && setSelectedRole('ADMIN')}
+                    disabled={adminExists}
+                    className={`p-4 rounded-xl border-2 transition-all relative ${
+                      selectedRole === 'ADMIN'
+                        ? 'border-purple-500 bg-purple-50'
+                        : adminExists
+                        ? 'border-gray-200 bg-gray-100 cursor-not-allowed opacity-60'
+                        : 'border-gray-200 bg-white/50 hover:border-purple-300'
+                    }`}
+                  >
+                    <Shield className={`w-8 h-8 mx-auto mb-2 ${
+                      selectedRole === 'ADMIN' ? 'text-purple-600' : 'text-gray-400'
+                    }`} />
+                    <p className={`font-medium text-sm ${
+                      selectedRole === 'ADMIN' ? 'text-purple-700' : 'text-gray-600'
+                    }`}>
+                      Admin
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Manage the store</p>
+                    {adminExists && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-gray-900/5 rounded-xl">
+                        <span className="text-xs font-semibold text-red-600 bg-white px-2 py-1 rounded">
+                          Taken
+                        </span>
+                      </div>
+                    )}
+                  </button>
+                </div>
+              )}
+              
+              {adminExists && selectedRole === 'ADMIN' && (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                  ⚠️ Admin account already exists. Contact the existing admin or choose Client role.
+                </p>
+              )}
+            </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">Full Name</label>
               <div className="relative">
@@ -234,14 +331,14 @@ export default function RegisterPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (selectedRole === 'ADMIN' && adminExists)}
               className="w-full bg-gradient-to-r from-pink-500 to-pink-600 text-white py-3 rounded-xl font-medium hover:from-pink-600 hover:to-pink-700 transition-all shadow-lg shadow-pink-500/30 flex items-center justify-center gap-2 group disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
               ) : (
                 <>
-                  Create Account
+                  Create {selectedRole === 'ADMIN' ? 'Admin' : 'Client'} Account
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </>
               )}

@@ -1,4 +1,4 @@
-// app/api/auth/register/route.ts
+// app/api/auth/register/route.ts - UPDATED WITH ADMIN CHECK
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import prisma from '@/lib/prisma';
@@ -10,11 +10,12 @@ export enum UserRole {
   CLIENT = 'CLIENT',
 }
 
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { fullName, email, phone, password, role } = body;
+
+    console.log('[Register] Attempting to register:', { email, role });
 
     // Validation
     if (!fullName || !email || !password) {
@@ -54,18 +55,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Only allow ADMIN creation once
+    // Only allow ADMIN creation if no admin exists
     if (role === UserRole.ADMIN) {
       const adminCount = await prisma.user.count({
         where: { role: UserRole.ADMIN },
       });
 
       if (adminCount > 0) {
+        console.log('[Register] Admin already exists, blocking registration');
         return NextResponse.json(
-          { error: 'Admin account already exists' },
+          { error: 'Admin account already exists. Only one admin is allowed.' },
           { status: 403 }
         );
       }
+      
+      console.log('[Register] No admin exists, allowing admin creation');
     }
 
     // Hash password
@@ -90,6 +94,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    console.log('[Register] User created successfully:', { id: user.id, email: user.email, role: user.role });
+
     // Track analytics
     await prisma.analytics.create({
       data: {
@@ -110,7 +116,7 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (error: any) {
-    console.error('Registration error:', error);
+    console.error('[Register] Registration error:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }
