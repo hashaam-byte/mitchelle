@@ -1,8 +1,12 @@
+// app/(auth)/auth/login/page.tsx - UPDATED
 'use client'
 import { useState } from 'react';
+import { signIn } from 'next-auth/react';
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Sparkles, AlertCircle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
@@ -13,54 +17,41 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleChange = (field, value) => {
+  const handleChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setError('');
   };
 
-  const handleLogin = async (e) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-          isSuperAdmin: isSuperAdmin.toString(),
-          superAdminKey: isSuperAdmin ? formData.superAdminKey : undefined,
-        }),
+      const result = await signIn('credentials', {
+        email: formData.email,
+        password: formData.password,
+        isSuperAdmin: isSuperAdmin.toString(),
+        superAdminKey: isSuperAdmin ? formData.superAdminKey : undefined,
+        redirect: false, // Handle redirect manually
       });
 
-      const data = await response.json();
-
-      if (data.error) {
-        console.error('Login error:', data.error);
-        setError(`Login error: ${data.error}`);
+      if (result?.error) {
+        setError(result.error);
         setLoading(false);
         return;
       }
 
-      console.log('✅ Login successful:', data);
-
-      // Redirect based on user role
-      const userRole = data.user.role;
-      if (userRole === 'SUPER_ADMIN') {
-        window.location.href = '/admin/owner';
-      } else if (userRole === 'ADMIN') {
-        window.location.href = '/admin/dashboard';
-      } else if (userRole === 'CLIENT' || userRole === 'USER') {
-        window.location.href = '/client/home';
+      // Smart redirect based on user role (middleware will handle this)
+      // Just redirect to a protected route and middleware will send to correct dashboard
+      if (isSuperAdmin) {
+        router.push('/admin/owner');
       } else {
-        console.error('❌ Unknown user role:', userRole);
-        setError('Unknown user role. Please contact support.');
-        setLoading(false);
+        // Let middleware determine the correct route based on role
+        router.push('/client/home'); // Middleware will redirect ADMIN to /admin/dashboard
       }
-    } catch (err) {
-      console.error('Unexpected error during login:', err);
+    } catch (err: any) {
+      console.error('Login error:', err);
       setError('Something went wrong. Please try again.');
       setLoading(false);
     }
@@ -75,7 +66,7 @@ export default function LoginPage() {
 
       <div className="relative w-full max-w-md z-10">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 mb-2 cursor-pointer" onClick={() => window.location.href = '/'}>
+          <div className="inline-flex items-center gap-2 mb-2 cursor-pointer" onClick={() => router.push('/')}>
             <Sparkles className="w-8 h-8 text-pink-500" />
             <h1 className="text-4xl font-bold bg-gradient-to-r from-pink-500 to-pink-700 bg-clip-text text-transparent">
               MsCakeHub
@@ -97,7 +88,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          <div className="space-y-5">
+          <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">Email</label>
               <div className="relative">
@@ -163,7 +154,7 @@ export default function LoginPage() {
             )}
 
             <button
-              onClick={handleLogin}
+              type="submit"
               disabled={loading}
               className="w-full bg-gradient-to-r from-pink-500 to-pink-600 text-white py-3 rounded-xl font-medium hover:from-pink-600 hover:to-pink-700 transition-all shadow-lg shadow-pink-500/30 flex items-center justify-center gap-2 group disabled:opacity-70 disabled:cursor-not-allowed"
             >
@@ -176,13 +167,13 @@ export default function LoginPage() {
                 </>
               )}
             </button>
-          </div>
+          </form>
 
           <div className="text-center pt-4">
             <p className="text-gray-600 text-sm">
               Don't have an account?{' '}
               <button
-                onClick={() => window.location.href = '/auth/register'}
+                onClick={() => router.push('/auth/register')}
                 className="text-pink-600 hover:text-pink-700 font-medium"
               >
                 Sign up

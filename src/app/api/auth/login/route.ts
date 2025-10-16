@@ -1,14 +1,26 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-explicit-any */
+// app/api/auth/login/route.ts - WITH RATE LIMITING
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import prisma from '@/lib/prisma';
 import { UserRole } from '@/lib/auth';
+import { loginRateLimiter, getClientIp } from '@/lib/rate-limit';
 
-// Disable the rule for the specific line
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function POST(req: NextRequest) {
   try {
+    // Rate limiting - 5 attempts per 15 minutes per IP
+    const ip = getClientIp(req);
+    const rateLimitResult = await loginRateLimiter.check(req, 5, ip);
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        { 
+          error: 'Too many login attempts. Please try again later.',
+          retryAfter: rateLimitResult.reset 
+        },
+        { status: 429 }
+      );
+    }
+
     const body: any = await req.json();
     const { email, password, isSuperAdmin, superAdminKey } = body;
 
@@ -85,6 +97,18 @@ export async function POST(req: NextRequest) {
       data: { lastLogin: new Date() },
     });
 
+    // Track login analytics
+    await prisma.analytics.create({
+      data: {
+        event: 'USER_LOGIN',
+        userId: user.id,
+        metadata: {
+          ip,
+          userAgent: req.headers.get('user-agent'),
+        },
+      },
+    });
+
     return NextResponse.json({
       ok: true,
       user: {
@@ -94,7 +118,6 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: any) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     console.error('Login error:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
@@ -102,5 +125,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-/* eslint-enable @typescript-eslint/no-unused-vars */
-/* eslint-enable @typescript-eslint/no-explicit-any */
