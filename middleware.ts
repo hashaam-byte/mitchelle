@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
-import { applySecurityHeaders } from './lib/security-headers';
+import { applySecurityHeaders } from '@/lib/securtiy-headers';
 
 // Define route access rules
 const routeAccess = {
