@@ -1,58 +1,122 @@
-// app/(auth)/auth/login/page.tsx - FIXED: No callback URLs
+// app/(auth)/auth/register/page.tsx - FIXED: No callback URLs
 'use client'
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
-import { Eye, EyeOff, Mail, Lock, ArrowRight, Sparkles, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User, Phone, ArrowRight, Sparkles, AlertCircle, CheckCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
+    fullName: '',
     email: '',
+    phone: '',
     password: '',
-    superAdminKey: ''
+    confirmPassword: ''
   });
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
 
   const handleChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setError('');
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const validateForm = () => {
+    if (!formData.fullName || formData.fullName.length < 2) {
+      setError('Name must be at least 2 characters');
+      return false;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      setError('Please enter a valid email address');
+      return false;
+    }
+    if (!/^(?=.*[A-Z])(?=.*\d).{8,}$/.test(formData.password)) {
+      setError('Password must be at least 8 characters with 1 uppercase and 1 number');
+      return false;
+    }
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      return false;
+    }
+    return true;
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
+    if (!validateForm()) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      const result = await signIn('credentials', {
-        email: formData.email,
-        password: formData.password,
-        isSuperAdmin: isSuperAdmin.toString(),
-        superAdminKey: isSuperAdmin ? formData.superAdminKey : undefined,
-        redirect: false, // Critical: prevent NextAuth auto-redirect
+      // Register user
+      const registerRes = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: formData.fullName,
+          email: formData.email,
+          phone: formData.phone || undefined,
+          password: formData.password,
+          role: 'CLIENT'
+        }),
       });
 
-      if (result?.error) {
-        setError(result.error);
+      const data = await registerRes.json();
+
+      if (!registerRes.ok) {
+        setError(data.error || 'Registration failed');
         setLoading(false);
         return;
       }
 
-      if (result?.ok) {
-        // Force a hard refresh to trigger middleware
-        // The middleware will redirect to the appropriate dashboard
-        window.location.href = isSuperAdmin ? '/admin/owner' : '/client/home';
-      }
+      // Show success message briefly
+      setSuccess(true);
+      
+      // Auto-login after successful registration
+      setTimeout(async () => {
+        const loginResult = await signIn('credentials', {
+          email: formData.email,
+          password: formData.password,
+          redirect: false,
+        });
+
+        if (loginResult?.ok) {
+          // Force hard refresh to trigger middleware
+          window.location.href = '/client/home';
+        } else {
+          // If auto-login fails, redirect to login page
+          router.push('/auth/login');
+        }
+      }, 1500);
+
     } catch (err: any) {
-      console.error('Login error:', err);
+      console.error('Registration error:', err);
       setError('Something went wrong. Please try again.');
       setLoading(false);
     }
   };
+
+  if (success) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-pink-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle className="w-8 h-8 text-green-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Account Created!</h2>
+          <p className="text-gray-600 mb-4">Redirecting you to your dashboard...</p>
+          <div className="w-8 h-8 border-4 border-pink-200 border-t-pink-600 rounded-full animate-spin mx-auto"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-pink-100 flex items-center justify-center p-4 relative overflow-hidden">
@@ -69,13 +133,13 @@ export default function LoginPage() {
               MsCakeHub
             </h1>
           </div>
-          <p className="text-gray-600 text-sm">Welcome back to sweetness</p>
+          <p className="text-gray-600 text-sm">Create your sweet account</p>
         </div>
 
         <div className="backdrop-blur-lg bg-white/70 rounded-3xl shadow-2xl border border-white/50 p-8 space-y-6">
           <div className="space-y-2">
-            <h2 className="text-2xl font-bold text-gray-800">Sign In</h2>
-            <p className="text-gray-600 text-sm">Enter your credentials to continue</p>
+            <h2 className="text-2xl font-bold text-gray-800">Sign Up</h2>
+            <p className="text-gray-600 text-sm">Join us for delicious treats</p>
           </div>
 
           {error && (
@@ -85,7 +149,22 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-5">
+          <form onSubmit={handleRegister} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Full Name</label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={formData.fullName}
+                  onChange={(e) => handleChange('fullName', e.target.value)}
+                  placeholder="John Doe"
+                  className="w-full pl-11 pr-4 py-3 bg-white/50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 focus:border-transparent transition-all"
+                  required
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">Email</label>
               <div className="relative">
@@ -97,6 +176,20 @@ export default function LoginPage() {
                   placeholder="you@example.com"
                   className="w-full pl-11 pr-4 py-3 bg-white/50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 focus:border-transparent transition-all"
                   required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Phone (Optional)</label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => handleChange('phone', e.target.value)}
+                  placeholder="+234 123 456 7890"
+                  className="w-full pl-11 pr-4 py-3 bg-white/50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 focus:border-transparent transition-all"
                 />
               </div>
             </div>
@@ -121,34 +214,23 @@ export default function LoginPage() {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
+              <p className="text-xs text-gray-500">Min 8 characters, 1 uppercase, 1 number</p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="superAdmin"
-                checked={isSuperAdmin}
-                onChange={(e) => setIsSuperAdmin(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 text-pink-500 focus:ring-pink-400"
-              />
-              <label htmlFor="superAdmin" className="text-sm text-gray-600 cursor-pointer">
-                Super Admin Access
-              </label>
-            </div>
-
-            {isSuperAdmin && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Super Admin Secret Key</label>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Confirm Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
-                  type="password"
-                  value={formData.superAdminKey}
-                  onChange={(e) => handleChange('superAdminKey', e.target.value)}
-                  placeholder="Enter secret key"
-                  className="w-full px-4 py-3 bg-white/50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 focus:border-transparent transition-all"
+                  type={showPassword ? 'text' : 'password'}
+                  value={formData.confirmPassword}
+                  onChange={(e) => handleChange('confirmPassword', e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-11 pr-4 py-3 bg-white/50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 focus:border-transparent transition-all"
                   required
                 />
               </div>
-            )}
+            </div>
 
             <button
               type="submit"
@@ -159,7 +241,7 @@ export default function LoginPage() {
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
               ) : (
                 <>
-                  Sign In
+                  Create Account
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </>
               )}
@@ -168,12 +250,12 @@ export default function LoginPage() {
 
           <div className="text-center pt-4">
             <p className="text-gray-600 text-sm">
-              Don't have an account?{' '}
+              Already have an account?{' '}
               <button
-                onClick={() => router.push('/auth/register')}
+                onClick={() => router.push('/auth/login')}
                 className="text-pink-600 hover:text-pink-700 font-medium"
               >
-                Sign up
+                Sign in
               </button>
             </p>
           </div>
