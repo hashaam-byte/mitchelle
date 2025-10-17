@@ -1,13 +1,26 @@
+// app/(admin)/admin/products/page.tsx - COMBINED VERSION
 'use client'
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Search, Package, Star, X, Upload } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Package, Star, X } from 'lucide-react';
+import CloudinaryUpload from '@/app/components/CloudinaryUpload';
+
+interface Product {
+  id: string;
+  title: string;
+  description?: string;
+  price: number;
+  imageUrl: string;
+  category: string;
+  stock: number;
+  isFeatured: boolean;
+}
 
 export default function AdminProducts() {
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [editingProduct, setEditingProduct] = useState(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -17,7 +30,7 @@ export default function AdminProducts() {
     imageUrl: '',
     isFeatured: false
   });
-  const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchProducts();
@@ -35,36 +48,16 @@ export default function AdminProducts() {
     }
   };
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-    const uploadData = new FormData();
-    uploadData.append('file', file);
-    uploadData.append('upload_preset', 'ml_default');
-
-    try {
-      const res = await fetch(
-        'https://api.cloudinary.com/v1_1/YOUR_CLOUD_NAME/image/upload',
-        {
-          method: 'POST',
-          body: uploadData
-        }
-      );
-      const data = await res.json();
-      setFormData(prev => ({ ...prev, imageUrl: data.secure_url }));
-    } catch (error) {
-      console.error('Upload failed:', error);
-      alert('Failed to upload image');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!formData.imageUrl) {
+      alert('Please upload an image');
+      return;
+    }
+
+    setSubmitting(true);
+
     try {
       const url = editingProduct ? `/api/products/${editingProduct.id}` : '/api/products';
       const method = editingProduct ? 'PATCH' : 'POST';
@@ -80,29 +73,35 @@ export default function AdminProducts() {
       });
 
       if (res.ok) {
-        fetchProducts();
+        await fetchProducts();
         setShowModal(false);
         resetForm();
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to save product');
       }
     } catch (error) {
       console.error('Failed to save product:', error);
+      alert('An error occurred');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
 
     try {
       const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        fetchProducts();
+        await fetchProducts();
       }
     } catch (error) {
       console.error('Failed to delete product:', error);
     }
   };
 
-  const handleEdit = (product) => {
+  const handleEdit = (product: Product) => {
     setEditingProduct(product);
     setFormData({
       title: product.title,
@@ -136,6 +135,7 @@ export default function AdminProducts() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-pink-100">
+      {/* Header */}
       <div className="backdrop-blur-lg bg-white/70 border-b border-pink-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
@@ -159,7 +159,9 @@ export default function AdminProducts() {
         </div>
       </div>
 
+      {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Search Bar */}
         <div className="backdrop-blur-lg bg-white/70 rounded-2xl border border-white/50 p-4 mb-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -173,6 +175,7 @@ export default function AdminProducts() {
           </div>
         </div>
 
+        {/* Products Grid */}
         {loading ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3, 4, 5, 6].map(i => (
@@ -249,6 +252,7 @@ export default function AdminProducts() {
         )}
       </div>
 
+      {/* Product Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="backdrop-blur-lg bg-white/90 rounded-3xl border border-white/50 p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -267,38 +271,16 @@ export default function AdminProducts() {
               </button>
             </div>
 
-            <div className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Cloudinary Upload Component */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Product Image</label>
-                {formData.imageUrl ? (
-                  <div className="relative">
-                    <img src={formData.imageUrl} alt="Preview" className="w-full h-48 object-cover rounded-xl" />
-                    <button
-                      onClick={() => setFormData(prev => ({ ...prev, imageUrl: '' }))}
-                      className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-lg"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="block border-2 border-dashed border-pink-300 rounded-xl p-8 text-center cursor-pointer hover:border-pink-500 transition-colors">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      className="hidden"
-                      disabled={uploading}
-                    />
-                    {uploading ? (
-                      <div className="animate-spin rounded-full h-8 w-8 border-4 border-pink-500 border-t-transparent mx-auto"></div>
-                    ) : (
-                      <>
-                        <Upload className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                        <p className="text-sm text-gray-600">Click to upload image</p>
-                      </>
-                    )}
-                  </label>
-                )}
+                <CloudinaryUpload
+                  currentImage={formData.imageUrl}
+                  onUploadComplete={(url) => setFormData({...formData, imageUrl: url})}
+                  onRemove={() => setFormData({...formData, imageUrl: ''})}
+                  folder="products"
+                />
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
@@ -308,21 +290,26 @@ export default function AdminProducts() {
                     type="text"
                     required
                     value={formData.title}
-                    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                    onChange={(e) => setFormData({...formData, title: e.target.value})}
                     className="w-full px-4 py-3 bg-white/50 border border-pink-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                  <input
-                    type="text"
+                  <select
                     required
                     value={formData.category}
-                    onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                    placeholder="e.g., Cake, Cookie, Pastry"
+                    onChange={(e) => setFormData({...formData, category: e.target.value})}
                     className="w-full px-4 py-3 bg-white/50 border border-pink-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500"
-                  />
+                  >
+                    <option value="">Select category</option>
+                    <option value="Cakes">Cakes</option>
+                    <option value="Cupcakes">Cupcakes</option>
+                    <option value="Cookies">Cookies</option>
+                    <option value="Bento Cakes">Bento Cakes</option>
+                    <option value="Pastries">Pastries</option>
+                  </select>
                 </div>
 
                 <div>
@@ -333,7 +320,7 @@ export default function AdminProducts() {
                     min="0"
                     step="0.01"
                     value={formData.price}
-                    onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value }))}
+                    onChange={(e) => setFormData({...formData, price: e.target.value})}
                     className="w-full px-4 py-3 bg-white/50 border border-pink-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500"
                   />
                 </div>
@@ -345,7 +332,7 @@ export default function AdminProducts() {
                     required
                     min="0"
                     value={formData.stock}
-                    onChange={(e) => setFormData(prev => ({ ...prev, stock: e.target.value }))}
+                    onChange={(e) => setFormData({...formData, stock: e.target.value})}
                     className="w-full px-4 py-3 bg-white/50 border border-pink-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500"
                   />
                 </div>
@@ -355,7 +342,7 @@ export default function AdminProducts() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
                   rows={4}
                   className="w-full px-4 py-3 bg-white/50 border border-pink-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500"
                 />
@@ -366,7 +353,7 @@ export default function AdminProducts() {
                   type="checkbox"
                   id="featured"
                   checked={formData.isFeatured}
-                  onChange={(e) => setFormData(prev => ({ ...prev, isFeatured: e.target.checked }))}
+                  onChange={(e) => setFormData({...formData, isFeatured: e.target.checked})}
                   className="w-4 h-4 text-pink-600 rounded"
                 />
                 <label htmlFor="featured" className="text-sm font-medium text-gray-700">
@@ -376,13 +363,21 @@ export default function AdminProducts() {
 
               <div className="flex gap-3 pt-4">
                 <button
-                  onClick={handleSubmit}
-                  disabled={uploading || !formData.imageUrl}
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-pink-500 to-pink-600 text-white rounded-xl font-medium hover:from-pink-600 hover:to-pink-700 transition-all disabled:opacity-50"
+                  type="submit"
+                  disabled={submitting || !formData.imageUrl}
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-pink-500 to-pink-600 text-white rounded-xl font-medium hover:from-pink-600 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {editingProduct ? 'Update Product' : 'Add Product'}
+                  {submitting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      Saving...
+                    </span>
+                  ) : (
+                    editingProduct ? 'Update Product' : 'Add Product'
+                  )}
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     setShowModal(false);
                     resetForm();
@@ -392,7 +387,7 @@ export default function AdminProducts() {
                   Cancel
                 </button>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       )}

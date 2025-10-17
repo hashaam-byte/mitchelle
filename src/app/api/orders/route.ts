@@ -1,9 +1,9 @@
-// app/api/orders/route.ts
+// app/api/orders/route.ts - WITH EMAIL NOTIFICATIONS
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
+import { sendOrderConfirmationEmail, isEmailConfigured } from '@/lib/email';
 
-// GET: Fetch user's orders
 export async function GET(req: NextRequest) {
   try {
     const user = await requireAuth();
@@ -34,7 +34,6 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST: Create new order
 export async function POST(req: NextRequest) {
   try {
     const user = await requireAuth();
@@ -46,6 +45,13 @@ export async function POST(req: NextRequest) {
       where: { userId: user.id },
       include: { product: true },
     });
+
+    if (cartItems.length === 0) {
+      return NextResponse.json(
+        { error: 'Cart is empty' },
+        { status: 400 }
+      );
+    }
 
     type CartItemWithProduct = typeof cartItems[number];
 
@@ -93,7 +99,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const shipping = 0; // You can add shipping calculation logic
+    const shipping = 0;
     const total = subtotal - discount + shipping;
 
     // Calculate platform fee (5%)
@@ -113,6 +119,9 @@ export async function POST(req: NextRequest) {
         total,
         deliveryAddress,
         status: 'PENDING',
+      },
+      include: {
+        user: true,
       },
     });
 
@@ -156,6 +165,21 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Send order confirmation email (if configured)
+    if (isEmailConfigured()) {
+      await sendOrderConfirmationEmail({
+        to: order.user.email,
+        customerName: order.user.fullName,
+        orderId: order.id.slice(0, 8).toUpperCase(),
+        total: order.total,
+        items: cartItems.map(item => ({
+          name: item.product.title,
+          quantity: item.quantity,
+          price: item.product.price,
+        })),
+      });
+    }
+
     return NextResponse.json({
       message: 'Order created successfully',
       order: {
@@ -168,6 +192,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    console.error('Order creation error:', error);
     return NextResponse.json(
       { error: 'Failed to create order', details: error.message },
       { status: 500 }

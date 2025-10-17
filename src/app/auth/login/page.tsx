@@ -1,12 +1,14 @@
-// app/(auth)/auth/login/page.tsx - FIXED: No callback URLs
+// app/(auth)/auth/login/page.tsx - FIXED SESSION CHECK
 'use client'
-import { useState } from 'react';
-import { signIn } from 'next-auth/react';
-import { Eye, EyeOff, Mail, Lock, ArrowRight, Sparkles, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { signIn, useSession } from 'next-auth/react';
+import { Eye, EyeOff, Mail, Lock, ArrowRight, Sparkles, AlertCircle, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
@@ -16,6 +18,51 @@ export default function LoginPage() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Check for active session on mount and redirect if found
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user) {
+      console.log('[Login Page] Active session detected, redirecting user');
+      
+      // Redirect based on role
+      const userRole = session.user.role;
+      if (userRole === 'SUPER_ADMIN') {
+        window.location.href = '/admin/owner';
+      } else if (userRole === 'ADMIN') {
+        window.location.href = '/admin/dashboard';
+      } else {
+        window.location.href = '/client/home';
+      }
+    }
+  }, [status, session]);
+
+  // Show loading spinner while checking session
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-pink-100 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-pink-600 animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Checking your session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If authenticated, show redirect message (backup)
+  if (status === 'authenticated') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-pink-100 flex items-center justify-center">
+        <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Sparkles className="w-8 h-8 text-green-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Already Logged In!</h2>
+          <p className="text-gray-600 mb-4">Redirecting to your dashboard...</p>
+          <div className="w-8 h-8 border-4 border-pink-200 border-t-pink-600 rounded-full animate-spin mx-auto"></div>
+        </div>
+      </div>
+    );
+  }
 
   const handleChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -33,7 +80,7 @@ export default function LoginPage() {
         password: formData.password,
         isSuperAdmin: isSuperAdmin.toString(),
         superAdminKey: isSuperAdmin ? formData.superAdminKey : undefined,
-        redirect: false, // Critical: prevent NextAuth auto-redirect
+        redirect: false,
       });
 
       if (result?.error) {
@@ -43,9 +90,32 @@ export default function LoginPage() {
       }
 
       if (result?.ok) {
-        // Force a hard refresh to trigger middleware
-        // The middleware will redirect to the appropriate dashboard
-        window.location.href = isSuperAdmin ? '/admin/owner' : '/client/home';
+        // Fetch user session to get actual role from database
+        const sessionRes = await fetch('/api/auth/session');
+        const sessionData = await sessionRes.json();
+        
+        if (sessionData?.user?.role) {
+          const userRole = sessionData.user.role;
+          console.log('[Login] User role from DB:', userRole);
+
+          // Redirect based on actual role from database
+          switch (userRole) {
+            case 'SUPER_ADMIN':
+              window.location.href = '/admin/owner';
+              break;
+            case 'ADMIN':
+              window.location.href = '/admin/dashboard';
+              break;
+            case 'CLIENT':
+              window.location.href = '/client/home';
+              break;
+            default:
+              window.location.href = '/client/home';
+          }
+        } else {
+          // Fallback if session fetch fails
+          window.location.href = isSuperAdmin ? '/admin/owner' : '/client/home';
+        }
       }
     } catch (err: any) {
       console.error('Login error:', err);
@@ -196,3 +266,16 @@ export default function LoginPage() {
     </div>
   );
 }
+
+// Export with dynamic import to disable SSR
+export default dynamic(() => Promise.resolve(LoginPageContent), {
+  ssr: false,
+  loading: () => (
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-pink-100 flex items-center justify-center">
+      <div className="text-center">
+        <Loader2 className="w-12 h-12 text-pink-600 animate-spin mx-auto mb-4" />
+        <p className="text-gray-600">Loading...</p>
+      </div>
+    </div>
+  ),
+});

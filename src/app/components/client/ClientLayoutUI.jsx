@@ -1,15 +1,17 @@
+// components/client/ClientLayoutUI.tsx
 'use client'
 import { useState, useEffect } from 'react';
 import { Home, ShoppingBag, Package, User, ShoppingCart, LogOut, Menu, X, Sparkles, Gift, Star, Bell } from 'lucide-react';
+import { signOut } from 'next-auth/react';
+import { usePathname, useRouter } from 'next/navigation';
 
-export default function ClientLayout({ children }) {
+export default function ClientLayoutUI({ children, user }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeRoute, setActiveRoute] = useState('');
   const [notifications, setNotifications] = useState(3);
+  const pathname = usePathname();
+  const router = useRouter();
 
   useEffect(() => {
-    setActiveRoute(window.location.pathname);
-    
     // Auto-close sidebar on desktop
     const handleResize = () => {
       if (window.innerWidth >= 1024) {
@@ -30,13 +32,12 @@ export default function ClientLayout({ children }) {
   ];
 
   const handleNavigation = (href) => {
-    window.location.href = href;
+    router.push(href);
     setSidebarOpen(false);
   };
 
-  const handleLogout = () => {
-    // Add logout logic here
-    window.location.href = '/auth/login';
+  const handleLogout = async () => {
+    await signOut({ callbackUrl: '/auth/login' });
   };
 
   return (
@@ -64,11 +65,26 @@ export default function ClientLayout({ children }) {
             </div>
           </div>
 
+          {/* User Info */}
+          {user && (
+            <div className="px-6 py-4 border-b border-white/30">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-pink-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
+                  {user.name?.charAt(0) || user.email?.charAt(0) || 'U'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{user.name || 'User'}</p>
+                  <p className="text-xs text-gray-600 truncate">{user.email}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Navigation */}
           <nav className="flex-1 px-4 py-6 space-y-2">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = activeRoute === item.href || activeRoute.startsWith(item.href);
+              const isActive = pathname === item.href || pathname.startsWith(item.href);
               
               return (
                 <button
@@ -197,11 +213,26 @@ export default function ClientLayout({ children }) {
               </button>
             </div>
 
+            {/* Mobile User Info */}
+            {user && (
+              <div className="px-6 py-4 border-b border-white/30">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-pink-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
+                    {user.name?.charAt(0) || user.email?.charAt(0) || 'U'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{user.name || 'User'}</p>
+                    <p className="text-xs text-gray-600 truncate">{user.email}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Mobile Navigation */}
             <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
               {navItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = activeRoute === item.href || activeRoute.startsWith(item.href);
+                const isActive = pathname === item.href || pathname.startsWith(item.href);
                 
                 return (
                   <button
