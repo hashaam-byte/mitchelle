@@ -1,204 +1,147 @@
-// app/api/payment/initialize/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+// app/api/payment/initialize/route.ts - WITH SUB-ACCOUNT SPLIT
+import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
-import { requireAuth } from '@/lib/auth';
 
-export async function POST(req: NextRequest) {
+const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY!;
+const PAYSTACK_SUBACCOUNT = process.env.PAYSTACK_SUBACCOUNT_CODE!;
+
+export async function POST(req: Request) {
   try {
-    const user = await requireAuth();
+    const session = await getServerSession(authOptions);
+
+    if (!session || !session.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const body = await req.json();
     const { orderId } = body;
 
-    if (!orderId) {
-      return NextResponse.json(
-        { error: 'Order ID is required' },
-        { status: 400 }
-      );
-    }
-
-    // Fetch order details
+    // Get order details
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
         user: true,
         items: {
           include: {
-            product: true,
-          },
-        },
-      },
+            product: true
+          }
+        }
+      }
     });
 
     if (!order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    // Verify the order belongs to the user
-    if (order.userId !== user.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized to access this order' },
-        { status: 403 }
-      );
+    if (order.userId !== session.user.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Check if order is already paid
-    if (order.status === 'PAID' || order.status === 'DELIVERED') {
+    // Generate unique reference
+    const reference = `MCH-${Date.now()}-${order.id.slice(0, 8)}`;
+
+    // Calculate commission split (done automatically by Paystack)
+    const totalAmount = order.total * 100; // Convert to kobo
+    const platformCommission = order.total * 0.05; // 5%
+    const adminRevenue = order.total * 0.95; // 95%
+
+    // Initialize Paystack payment WITH SUB-ACCOUNT
+    const paystackData = {
+      email: order.user.email,
+      amount: totalAmount, // Amount in kobo
+      reference,
+      currency: 'NGN',
+      callback_url: `${process.env.NEXTAUTH_URL}/client/payment-success?reference=${reference}`,
+      metadata: {
+        orderId: order.id,
+        userId: order.userId,
+        custom_fields: [
+          {
+            display_name: "Order ID",
+            variable_name: "order_id",
+            value: order.id
+          },
+          {
+            display_name: "Customer Name",
+            variable_name: "customer_name",
+            value: order.user.fullName
+          }
+        ]
+      },
+      // SUB-ACCOUNT CONFIGURATION
+      subaccount: PAYSTACK_SUBACCOUNT,
+      transaction_charge: platformCommission * 100, // 5% in kobo
+      bearer: 'account' // Main account bears Paystack fees
+    };
+
+    console.log('[PAYMENT INIT WITH SUB-ACCOUNT]', {
+      orderId: order.id,
+      total: `₦${order.total}`,
+      commission: `₦${platformCommission} (5%)`,
+      adminRevenue: `₦${adminRevenue} (95%)`,
+      subaccount: PAYSTACK_SUBACCOUNT
+    });
+
+    const response = await fetch('https://api.paystack.co/transaction/initialize', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${PAYSTACK_SECRET}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(paystackData)
+    });
+
+    const data = await response.json();
+
+    if (!data.status) {
+      console.error('[PAYSTACK ERROR]', data);
       return NextResponse.json(
-        { error: 'Order is already paid' },
+        { error: data.message || 'Payment initialization failed' },
         { status: 400 }
       );
     }
 
-    // Convert amount to kobo (Paystack uses kobo)
-    const amountInKobo = Math.round(order.total * 100);
-
-    // Initialize Paystack payment
-    const paystackResponse = await fetch(
-      'https://api.paystack.co/transaction/initialize',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: order.user.email,
-          amount: amountInKobo,
-          currency: 'NGN',
-          reference: `ORDER_${order.id}_${Date.now()}`,
-          callback_url: `${process.env.NEXTAUTH_URL}/client/payment-success`,
-          metadata: {
-            orderId: order.id,
-            userId: order.userId,
-            orderTotal: order.total,
-            platformFee: order.platformFee,
-            adminRevenue: order.adminRevenue,
-            custom_fields: [
-              {
-                display_name: 'Order ID',
-                variable_name: 'order_id',
-                value: order.id,
-              },
-              {
-                display_name: 'Customer Name',
-                variable_name: 'customer_name',
-                value: order.user.fullName,
-              },
-            ],
-          },
-        }),
-      }
-    );
-
-    const paystackData = await paystackResponse.json();
-
-    if (!paystackData.status) {
-      return NextResponse.json(
-        { error: 'Failed to initialize payment', details: paystackData.message },
-        { status: 500 }
-      );
-    }
-
-    // Create payment record in database
+    // Create payment record
     await prisma.payment.create({
       data: {
         orderId: order.id,
         userId: order.userId,
-        provider: 'paystack',
-        transactionRef: paystackData.data.reference,
+        transactionRef: reference,
         amount: order.total,
-        feeCollected: order.platformFee,
-        adminEarning: order.adminRevenue,
+        feeCollected: platformCommission,
+        adminEarning: adminRevenue,
         status: 'PENDING',
-        paymentMetadata: paystackData.data,
-      },
-    });
-
-    // Return the payment URL
-    return NextResponse.json({
-      success: true,
-      authorization_url: paystackData.data.authorization_url,
-      access_code: paystackData.data.access_code,
-      reference: paystackData.data.reference,
-    });
-  } catch (error: any) {
-    if (error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    console.error('Payment initialization error:', error);
-    return NextResponse.json(
-      { error: 'Failed to initialize payment', details: error.message },
-      { status: 500 }
-    );
-  }
-}
-
-// GET endpoint to verify payment status
-export async function GET(req: NextRequest) {
-  try {
-    await requireAuth();
-
-    const { searchParams } = new URL(req.url);
-    const reference = searchParams.get('reference');
-
-    if (!reference) {
-      return NextResponse.json(
-        { error: 'Payment reference is required' },
-        { status: 400 }
-      );
-    }
-
-    // Verify payment with Paystack
-    const verifyResponse = await fetch(
-      `https://api.paystack.co/transaction/verify/${reference}`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-        },
+        provider: 'paystack'
       }
-    );
+    });
 
-    const verifyData = await verifyResponse.json();
-
-    if (!verifyData.status) {
-      return NextResponse.json(
-        { error: 'Payment verification failed' },
-        { status: 400 }
-      );
-    }
-
-    // Get payment record
-    const payment = await prisma.payment.findUnique({
-      where: { transactionRef: reference },
-      include: {
-        order: {
-          include: {
-            items: {
-              include: {
-                product: true,
-              },
-            },
-            user: true,
-          },
-        },
-      },
+    console.log('[PAYMENT INITIALIZED]', {
+      reference,
+      authorization_url: data.data.authorization_url,
+      splitInfo: {
+        total: `₦${order.total}`,
+        superAdmin: `₦${platformCommission} (5%)`,
+        admin: `₦${adminRevenue} (95%)`
+      }
     });
 
     return NextResponse.json({
       success: true,
-      payment: verifyData.data,
-      order: payment?.order,
+      authorization_url: data.data.authorization_url,
+      reference,
+      splitInfo: {
+        total: order.total,
+        platformCommission,
+        adminRevenue
+      }
     });
-  } catch (error: any) {
-    if (error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
 
+  } catch (error) {
+    console.error('[PAYMENT INIT ERROR]', error);
     return NextResponse.json(
-      { error: 'Failed to verify payment', details: error.message },
+      { error: 'Failed to initialize payment' },
       { status: 500 }
     );
   }

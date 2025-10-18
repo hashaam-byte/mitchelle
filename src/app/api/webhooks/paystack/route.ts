@@ -1,121 +1,141 @@
-// app/api/webhooks/paystack/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+// app/api/webhooks/paystack/route.ts - UPDATED WITH AUTO COMMISSION
+import { NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import crypto from 'crypto';
 import prisma from '@/lib/prisma';
 
-export async function POST(req: NextRequest) {
+const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY!;
+
+export async function POST(req: Request) {
   try {
     const body = await req.text();
-    const signature = req.headers.get('x-paystack-signature');
+    const headersList = headers();
+    const signature = headersList.get('x-paystack-signature');
 
     // Verify webhook signature
     const hash = crypto
-      .createHmac('sha512', process.env.PAYSTACK_SECRET_KEY!)
+      .createHmac('sha512', PAYSTACK_SECRET)
       .update(body)
       .digest('hex');
 
     if (hash !== signature) {
-      return NextResponse.json(
-        { error: 'Invalid signature' },
-        { status: 401 }
-      );
+      console.error('[PAYSTACK WEBHOOK] Invalid signature');
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
     }
 
     const event = JSON.parse(body);
+    console.log('[PAYSTACK WEBHOOK] Event received:', event.event);
 
-    // Handle charge.success event
+    // Handle successful payment
     if (event.event === 'charge.success') {
-      const { reference, amount, metadata } = event.data;
-      const orderId = metadata.orderId;
+      const { reference, amount, customer } = event.data;
 
-      // Find payment record
+      // Amount is in kobo, convert to naira
+      const amountInNaira = amount / 100;
+
+      // Calculate 5% platform commission and 95% admin revenue
+      const platformCommission = amountInNaira * 0.05;
+      const adminRevenue = amountInNaira * 0.95;
+
+      console.log('[PAYMENT BREAKDOWN]', {
+        total: `₦${amountInNaira}`,
+        platformCommission: `₦${platformCommission.toFixed(2)} (5%)`,
+        adminRevenue: `₦${adminRevenue.toFixed(2)} (95%)`
+      });
+
+      // Find the payment record
       const payment = await prisma.payment.findUnique({
         where: { transactionRef: reference },
-        include: { order: true },
+        include: { order: true }
       });
 
       if (!payment) {
-        console.error('Payment not found:', reference);
+        console.error('[PAYSTACK WEBHOOK] Payment not found:', reference);
         return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
       }
 
-      // Update payment status
+      // Update payment with commission split
       await prisma.payment.update({
         where: { id: payment.id },
         data: {
           status: 'SUCCESS',
-          paymentMetadata: event.data,
-        },
+          feeCollected: platformCommission,
+          adminEarning: adminRevenue,
+          paymentMetadata: event.data
+        }
       });
 
       // Update order status
       await prisma.order.update({
-        where: { id: orderId },
-        data: { status: 'PAID' },
+        where: { id: payment.orderId },
+        data: {
+          status: 'PAID',
+          platformFee: platformCommission,
+          adminRevenue: adminRevenue
+        }
       });
 
       // Update user's total spent
       await prisma.user.update({
         where: { id: payment.userId },
         data: {
-          totalSpent: {
-            increment: payment.amount,
-          },
-        },
+          totalSpent: { increment: amountInNaira }
+        }
       });
 
-      // Check if user should be marked as regular (e.g., spent > ₦50,000)
+      // Check if user qualifies as regular customer (spent > 50,000)
       const user = await prisma.user.findUnique({
         where: { id: payment.userId },
+        select: { totalSpent: true, isRegular: true }
       });
 
       if (user && user.totalSpent >= 50000 && !user.isRegular) {
         await prisma.user.update({
-          where: { id: user.id },
-          data: { isRegular: true },
+          where: { id: payment.userId },
+          data: { isRegular: true }
         });
+        console.log('[USER UPGRADED] User is now a regular customer');
       }
 
-      // Update platform stats
+      // Update platform stats for today
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       await prisma.platformStats.upsert({
         where: { date: today },
         update: {
-          totalCommission: { increment: payment.feeCollected },
-          totalSales: { increment: payment.amount },
-          ordersPlaced: { increment: 1 },
+          totalCommission: { increment: platformCommission },
+          totalSales: { increment: amountInNaira },
+          ordersPlaced: { increment: 1 }
         },
         create: {
           date: today,
-          totalCommission: payment.feeCollected,
-          totalSales: payment.amount,
-          ordersPlaced: 1,
-        },
+          totalCommission: platformCommission,
+          totalSales: amountInNaira,
+          ordersPlaced: 1
+        }
       });
 
-      // Track analytics
-      await prisma.analytics.create({
-        data: {
-          event: 'PAYMENT_SUCCESS',
-          userId: payment.userId,
-          metadata: {
-            orderId,
-            amount: payment.amount,
-            reference,
-          },
-        },
+      console.log('[PAYMENT SUCCESS]', {
+        reference,
+        userId: payment.userId,
+        amount: `₦${amountInNaira}`,
+        platformCommission: `₦${platformCommission.toFixed(2)}`,
+        adminRevenue: `₦${adminRevenue.toFixed(2)}`
       });
 
-      console.log('Payment processed successfully:', reference);
+      return NextResponse.json({ 
+        success: true,
+        message: 'Payment processed successfully'
+      });
     }
 
     return NextResponse.json({ received: true });
-  } catch (error: any) {
-    console.error('Webhook error:', error);
+
+  } catch (error) {
+    console.error('[PAYSTACK WEBHOOK ERROR]', error);
     return NextResponse.json(
-      { error: 'Webhook processing failed', details: error.message },
+      { error: 'Webhook processing failed' },
       { status: 500 }
     );
   }

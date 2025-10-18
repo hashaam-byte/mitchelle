@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import ClientLayoutUI from '@/app/components/client/ClientLayoutUI';
+import AdDisplay from '@/app/components/AdDisplay';
 
 export default async function ClientLayout({
   children,
@@ -29,5 +30,6 @@ export default async function ClientLayout({
 
   console.log(`[Client Layout] Access granted for ${session.user.email} (${userRole})`);
 
-  return <ClientLayoutUI user={session.user}>{children}</ClientLayoutUI>;
+  return <ClientLayoutUI user={session.user}>{children}<AdDisplay /></ClientLayoutUI>;
+
 }
