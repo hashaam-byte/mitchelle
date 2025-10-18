@@ -1,12 +1,11 @@
-// app/(auth)/auth/login/page.tsx - FIXED SESSION CHECK
+// app/(auth)/auth/login/page.tsx - Simplified with Provider
 'use client'
 import { useState, useEffect } from 'react';
 import { signIn, useSession } from 'next-auth/react';
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Sparkles, AlertCircle, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
 
-function LoginPageContent() {
+export default function LoginPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const [showPassword, setShowPassword] = useState(false);
@@ -266,16 +265,3 @@ function LoginPageContent() {
     </div>
   );
 }
-
-// Export with dynamic import to disable SSR
-export default dynamic(() => Promise.resolve(LoginPageContent), {
-  ssr: false,
-  loading: () => (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-pink-100 flex items-center justify-center">
-      <div className="text-center">
-        <Loader2 className="w-12 h-12 text-pink-600 animate-spin mx-auto mb-4" />
-        <p className="text-gray-600">Loading...</p>
-      </div>
-    </div>
-  ),
-});
