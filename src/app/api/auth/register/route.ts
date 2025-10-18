@@ -1,7 +1,8 @@
-// app/api/auth/register/route.ts - UPDATED WITH ADMIN CHECK
+// app/api/auth/register/route.ts - UPDATED WITH ADMIN CHECK AND WELCOME EMAIL
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import prisma from '@/lib/prisma';
+import { sendWelcomeEmail, isEmailConfigured } from '@/lib/email';
 
 export enum UserRole {
   USER = 'USER',
@@ -107,6 +108,20 @@ export async function POST(req: NextRequest) {
         },
       },
     });
+
+    // Send welcome email (if configured and user is CLIENT)
+    if (isEmailConfigured() && user.role === 'CLIENT') {
+      try {
+        await sendWelcomeEmail({
+          to: user.email,
+          name: user.fullName,
+        });
+        console.log('[Register] Welcome email sent to:', user.email);
+      } catch (emailError) {
+        // Log email error but don't fail registration
+        console.error('[Register] Failed to send welcome email:', emailError);
+      }
+    }
 
     return NextResponse.json(
       {

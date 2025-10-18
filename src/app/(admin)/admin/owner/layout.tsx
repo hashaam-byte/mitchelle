@@ -2,7 +2,7 @@
 import { redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth'; // Your super admin navigation
-import SuperAdminLayoutUI from '@/app/components/admin/OwnerSideNav';
+
 
 export default async function OwnerLayout({
   children,
@@ -39,7 +39,7 @@ export default async function OwnerLayout({
   return (
     <div className="min-h-screen bg-gray-900">
       {/* Your super admin layout structure */}
-      return <SuperAdminLayoutUI user={session.user}>{children}</SuperAdminLayoutUI>;
+   
       
       <main className="container mx-auto px-4 py-8">
         {children}
