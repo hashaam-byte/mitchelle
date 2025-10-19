@@ -1,4 +1,3 @@
-// app/api/ads/[id]/route.ts
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
@@ -7,7 +6,7 @@ import prisma from '@/lib/prisma';
 // DELETE - Remove ad
 export async function DELETE(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -16,7 +15,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const { id } = params;
+    const { id } = await params; // Await params here
 
     // Check if ad exists
     const ad = await prisma.ad.findUnique({
@@ -51,7 +50,7 @@ export async function DELETE(
 // PATCH - Update ad (optional)
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -60,7 +59,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const { id } = params;
+    const { id } = await params; // Await params here
     const body = await req.json();
 
     const updatedAd = await prisma.ad.update({

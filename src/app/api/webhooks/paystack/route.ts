@@ -9,7 +9,7 @@ const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY!;
 export async function POST(req: Request) {
   try {
     const body = await req.text();
-    const headersList = headers();
+    const headersList = await headers(); // Await headers here
     const signature = headersList.get('x-paystack-signature');
 
     // Verify webhook signature
